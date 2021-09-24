@@ -51,6 +51,8 @@ class Moderation(commands.Cog):
         result = await Mongo.fetch_blacklist(Mongo(self.bot), guild_id)
         await ctx.send("CENSORED WORDS:\n" + "\n".join(result["blacklist_words"]))
 
+
+'''
     @commands.Cog.listener("on_message")
     async def whatever_you_want_to_call_it(self, message):
         if message.author.bot:
@@ -61,6 +63,8 @@ class Moderation(commands.Cog):
             if bad_words in message.content:
                 await message.delete()
                 await message.channel.send(f'hey {message.author.mention} that word is censored')
+
+'''
 
 
 def setup(bot):
