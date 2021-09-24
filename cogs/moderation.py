@@ -1,5 +1,41 @@
 from discord.ext import commands
 from cogs.mongo import Mongo
+from collections import OrderedDict
+
+
+class LRUCache:
+    def __init__(self):
+        self.capacity = 128
+        self.cache = OrderedDict()
+
+    def get(self, guild_id):
+        if guild_id not in self.cache:
+            return 0
+        else:
+            self.cache.move_to_end(guild_id)
+            return self.cache[guild_id]
+
+    def initialise(self ,guild_id , words):
+        self.cache[guild_id] = words
+
+    def put(self, guild_id, black_word=[]):
+        if guild_id not in self.cache:
+            return
+        self.cache[guild_id] += [black_word]
+        self.cache.move_to_end(guild_id)
+        if len(self.cache) > self.capacity:
+            self.cache.popitem(last=False)
+
+    def remove(self, guild_id, black_word):
+        if guild_id not in self.cache:
+            return
+        try:
+            self.cache[guild_id].remove(black_word)
+        except:
+            pass
+
+
+lru = LRUCache()
 
 
 class Moderation(commands.Cog):
@@ -36,6 +72,7 @@ class Moderation(commands.Cog):
     async def censor(self, ctx, word):
         guild_id = ctx.guild.id
         await Mongo.add_blacklist(Mongo(self.bot), guild_id, word)
+        lru.put(guild_id, word)
         await ctx.send(f"'{word}' has been censored")
 
     @commands.command()
@@ -43,28 +80,33 @@ class Moderation(commands.Cog):
     async def uncensor(self, ctx, word):
         guild_id = ctx.guild.id
         await Mongo.remove_blacklist(Mongo(self.bot), guild_id, word)
+        lru.remove(guild_id, word)
         await ctx.send(f"'{word}' has been uncensored")
 
     @censor.command()
     async def list(self, ctx):
         guild_id = ctx.guild.id
-        result = await Mongo.fetch_blacklist(Mongo(self.bot), guild_id)
-        await ctx.send("CENSORED WORDS:\n" + "\n".join(result["blacklist_words"]))
+        if lru.get(guild_id):
+            await ctx.send("CENSORED WORDS:\n" + "\n".join(lru.get(guild_id)))
+        else:
+            result = await Mongo.fetch_blacklist(Mongo(self.bot), guild_id)
+            lru.put(guild_id, result)
+            await ctx.send("CENSORED WORDS:\n" + "\n".join(result["blacklist_words"]))
 
-
-'''
     @commands.Cog.listener("on_message")
     async def whatever_you_want_to_call_it(self, message):
         if message.author.bot:
             return
-        result = await Mongo.fetch_blacklist(Mongo(self.bot), message.guild.id)
-        result = result["blacklist_words"]
+        result = lru.get(message.guild.id)
+        if not result:
+            print("not lru")
+            result = await Mongo.fetch_blacklist(Mongo(self.bot), message.guild.id)
+            result = result["blacklist_words"]
+            lru.initialise(message.guild.id, result)
         for bad_words in result:
             if bad_words in message.content:
                 await message.delete()
                 await message.channel.send(f'hey {message.author.mention} that word is censored')
-
-'''
 
 
 def setup(bot):
